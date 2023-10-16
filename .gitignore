@@ -22,3 +22,6 @@ go.work
 
 # IDE
 .vscode/
+
+# data directory where result and other staff will be palced
+data/*
