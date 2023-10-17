@@ -12,27 +12,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Task represents a task in the database
-type Task struct {
-	ID      int
-	Command string
-	State   string
-}
-
-// Trigger represents a trigger condition in the database
-type Trigger struct {
-	ID     int
-	TaskID int
-	Time   string // Assuming cron-like time description as a string
-	State  string
-}
-
 type Conf struct {
-	Branch string
-	Target string
-	Host string
-	List bool
+	Host    string
+	List    bool
 	Example bool
+	Git     struct {
+		Repo_ssh_address string
+		Key_path         string
+		Branch           string
+		Target           string
+	}
 	confFlags *pflag.FlagSet
 }
 
@@ -51,8 +40,7 @@ var logConfig = logging.LogConfig{
 
 var log = logging.Configure(logConfig)
 
-var genConfig = `
-## EXAMPLE CONFIG
+var genConfig = `## EXAMPLE CONFIG
 # repo with inventory file
 repo_ssh_address: ssh://git@git.example.com:22/ansible/repo/inventory.git
 # absolute path to private ssh key (should be accessible)
@@ -60,8 +48,20 @@ key_path: /example/dir/with/ssh_key/key_name
 # branch name of repo with inventory file
 branch: master
 # relative path to inventory directory or inventory file (inventory.yaml) - it will be used with ansible command
-target: inventory
-`
+target: inventory`
+
+var standaloneUsage = `Standalone Usage: ans-inv-git_darwin [-c CONFIG_FILE | --config[=]CONFIG_FILE] [--host HOST] [--list] [-g | --generate-config] [-h | --help]
+
+Options:`
+
+var ansibleUsage = `
+Usage with Ansible:
+  1. Check your ansible.cfg file: script statement should present in enable_plugins option.
+  2. Place app and it's config (named the same as app file but with .yaml) somewhere and remember path.
+  3. Use next command to check that all works:
+    ansible -i /some/folder/ans-inv-git lovely_host -m ping
+  4. Use ansible as you always do:
+    ansible-playbook -i /some/folder/ans-inv-git --diff plays/lovely_play.yml -l lovely_host`
 
 func NewConfig() Conf {
 	var c Conf
@@ -71,19 +71,18 @@ func NewConfig() Conf {
 	viper.SetEnvPrefix("aig")
 
 	// Defaults
-	viper.SetDefault("Repo_ssh_address", "ssh://git@git.example.com:22/ansible/repo/inventory.git")
-	viper.SetDefault("Key_path", "/example/dir/with/ssh_key/key_name")
-	viper.SetDefault("Branch", "master")
-	viper.SetDefault("Target", "inventory")
+	//viper.SetDefault("Git.RepoSshAddress", "ssh://git@git.example.com:22/ansible/repo/inventory.git")
+	//viper.SetDefault("Git.KeyPath", "/example/dir/with/ssh_key/key_name")
+	viper.SetDefault("Git.Branch", "master")
+	viper.SetDefault("Git.Target", "inventory")
 
 	//Flags
 	c.confFlags = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
 	configFile := c.confFlags.StringP("config", "c", "", "Config file location. Supported formats {json,toml,yaml}. Default path {'$HOME/.ans-inv-git','.','./config','/opt/ans-inv-git'}/config.yaml")
-	c.confFlags.StringP("host", "", "", "Output specific host info.")
-	c.confFlags.StringP("list", "", "", "Output all hosts info.")
-	//c.confFlags.BoolP("example", "e", false, "Insert example data into database. Default - false")
-	generate := c.confFlags.BoolP("generate-config", "g", false, "Generate example config to stdout. Default - false")
-	help := c.confFlags.BoolP("help", "h", false, "Print help message")
+	c.confFlags.String("host", "", "Output specific host info.")
+	c.confFlags.Bool("list", true, "Output all hosts info.")
+	generate := c.confFlags.BoolP("generate-config", "g", false, "Generate example config to stdout.")
+	help := c.confFlags.BoolP("help", "h", false, "Print help message.")
 
 	//parse flags
 	arg_err := c.confFlags.Parse(os.Args[1:])
@@ -91,11 +90,13 @@ func NewConfig() Conf {
 		log.Fatal().
 			Err(arg_err).
 			Str("module", "config").
-			Msg("")
+			Msg("Can't parse cmd args.")
+		os.Exit(1)
 	}
 	if *help {
-		fmt.Println("Usage of ans-inv-git:")
+		fmt.Println(standaloneUsage)
 		c.confFlags.PrintDefaults()
+		fmt.Println(ansibleUsage)
 		os.Exit(0)
 	}
 	if *generate {
@@ -106,8 +107,8 @@ func NewConfig() Conf {
 	if len(*configFile) > 2 {
 		viper.SetConfigFile(*configFile)
 	} else {
-		viper.SetConfigName("config.yml")    // name of config file (without extension)
-		viper.SetConfigType("yaml")          // REQUIRED if the config file does not have the extension in the name
+		viper.SetConfigName("config")             // name of config file (without extension)
+		viper.SetConfigType("yaml")               // REQUIRED if the config file does not have the extension in the name
 		viper.AddConfigPath("/opt/ans-inv-git")   // path to look for the config file in
 		viper.AddConfigPath("$HOME/.ans-inv-git") // call multiple times to add many search paths
 		viper.AddConfigPath("./config")
@@ -120,7 +121,8 @@ func NewConfig() Conf {
 		log.Fatal().
 			Err(arg_bind_err).
 			Str("module", "config").
-			Msg("")
+			Msg("Internal viper binding error.")
+		os.Exit(1)
 	}
 
 	// try to get values from env
@@ -132,8 +134,8 @@ func NewConfig() Conf {
 		log.Fatal().
 			Err(file_read_err).
 			Str("module", "config").
-			Msg("")
-		//os.Exit(0)
+			Msg("Can't get values from config file.")
+		os.Exit(1)
 	}
 
 	// do all above and get our values
@@ -142,7 +144,17 @@ func NewConfig() Conf {
 		log.Fatal().
 			Err(dec_err).
 			Str("module", "config").
-			Msg("")
+			Msg("Internal viper unmarshal error.")
+		os.Exit(1)
+	}
+
+	dec_git_err := viper.Unmarshal(&c.Git)
+	if dec_git_err != nil {
+		log.Fatal().
+			Err(dec_git_err).
+			Str("module", "config").
+			Msg("Another internal viper unmarshal error.")
+		os.Exit(1)
 	}
 
 	return c
