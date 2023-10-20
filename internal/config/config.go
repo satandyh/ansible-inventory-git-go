@@ -66,19 +66,21 @@ Usage with Ansible:
 func NewConfig() Conf {
 	var c Conf
 
+	//default config path
+	def_conf, _ := os.Executable()
+	def_conf = def_conf + ".yaml"
+
 	// all env will look like AIG_SOMETHING form Ansible-Inventory-Git
 	// for embedded use AIG_LEV1.VALUE
 	viper.SetEnvPrefix("aig")
 
 	// Defaults
-	//viper.SetDefault("Git.RepoSshAddress", "ssh://git@git.example.com:22/ansible/repo/inventory.git")
-	//viper.SetDefault("Git.KeyPath", "/example/dir/with/ssh_key/key_name")
 	viper.SetDefault("Git.Branch", "master")
 	viper.SetDefault("Git.Target", "inventory")
 
 	//Flags
 	c.confFlags = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
-	configFile := c.confFlags.StringP("config", "c", "", "Config file location. Supported formats {json,toml,yaml}. Default path {'$HOME/.ans-inv-git','.','./config','/opt/ans-inv-git'}/config.yaml")
+	configFile := c.confFlags.StringP("config", "c", "", "Set the absolute path to the config file.\nBy default it use work directory and application filename with \".yaml\" at the end.\nExample, if application filename is \"ans-git-inv\", then default config filename\nwill be \"ans-git-inv.yaml\" in the same directory.")
 	c.confFlags.String("host", "", "Output specific host info.")
 	c.confFlags.Bool("list", true, "Output all hosts info.")
 	generate := c.confFlags.BoolP("generate-config", "g", false, "Generate example config to stdout.")
@@ -107,12 +109,13 @@ func NewConfig() Conf {
 	if len(*configFile) > 2 {
 		viper.SetConfigFile(*configFile)
 	} else {
-		viper.SetConfigName("config")             // name of config file (without extension)
-		viper.SetConfigType("yaml")               // REQUIRED if the config file does not have the extension in the name
-		viper.AddConfigPath("/opt/ans-inv-git")   // path to look for the config file in
-		viper.AddConfigPath("$HOME/.ans-inv-git") // call multiple times to add many search paths
-		viper.AddConfigPath("./config")
-		viper.AddConfigPath(".")
+		viper.SetConfigFile(def_conf)
+		//viper.SetConfigName("config")             // name of config file (without extension)
+		//viper.SetConfigType("yaml")               // REQUIRED if the config file does not have the extension in the name
+		//viper.AddConfigPath("/opt/ans-inv-git")   // path to look for the config file in
+		//viper.AddConfigPath("$HOME/.ans-inv-git") // call multiple times to add many search paths
+		//viper.AddConfigPath("./config")
+		//viper.AddConfigPath(".")
 	}
 
 	// bind flags from pflags
