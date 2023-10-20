@@ -16,7 +16,7 @@ run:
 clean:
 	@go clean
 	@rm -f ${BINARY_NAME}
-	@rm ${BINARY_NAME}-darwin
+	@rm -f ${BINARY_NAME}-darwin
 
 .PHONY: lint
 lint: ## lint your code!
